@@ -150,9 +150,9 @@ for model_name in model_sizes_to_test:
         """
         Once we have fixes into hub, we can start using this
         job = hub.submit_profile_job(
-            model=model_name,
+            model=traced_model,
             name=model_name,
-            # input_shapes={ "x", x.shape },
+            input_shapes={ "x", input_shape },
             device=each,
             options="--apple_zero_copy"
         )
