@@ -92,8 +92,8 @@ class IntraNoAR_wrapper(nn.Module):
             #                                         self.model.y_spatial_prior)
             y_hat = self.model.dec(y_hat, curr_q_dec)
             # TODO: UNet model i.e. refine leads to pytorch crash
-            y_hat = self.model.refine(y_hat)
-            y_hat = y_hat.clamp_(0, 1)
+            # y_hat = self.model.refine(y_hat)
+            # y_hat = y_hat.clamp_(0, 1)
             return y_hat
 
 
@@ -132,10 +132,6 @@ for model_name in model_sizes_to_test:
 
     x = torch.ones(input_shape)
     traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
-    cml_inputs = [ ct.TensorType("x", shape=x.shape) ]
-    from tetrai import coremltools_extensions as cte
-    mlmodel = cte.convert(traced_model, convert_to="neuralnetwork", inputs=cml_inputs)
-    mlmodel.save(model_path)
 
     # TODO: replace by helper routine
     # sample = _image_to_torch(input_shape)
@@ -164,7 +160,7 @@ for model_name in model_sizes_to_test:
     """
 
     validation_job = hub.submit_validation_job(
-            model=model_path,
+            model=mlmodel,
             name=model_name,
             device=device,
             inputs=inputs,
