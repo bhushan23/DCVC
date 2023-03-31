@@ -92,8 +92,8 @@ class IntraNoAR_wrapper(nn.Module):
             #                                         self.model.y_spatial_prior)
             y_hat = self.model.dec(y_hat, curr_q_dec)
             # TODO: UNet model i.e. refine leads to pytorch crash
-            # y_hat = self.model.refine(y_hat)
-            # y_hat = y_hat.clamp_(0, 1)
+            y_hat = self.model.refine(y_hat)
+            y_hat = y_hat.clamp_(0, 1)
             return y_hat
 
 
@@ -130,8 +130,12 @@ for model_name in model_sizes_to_test:
     model_name = f"IntraNoAR_{model.mode}_{model_name}.mlmodel"
     model_path = os.path.join(current_dir, "tetra", "models", model_name)
 
-    # x = torch.ones(input_shape)
-    # traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
+    x = torch.ones(input_shape)
+    traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
+    cml_inputs = [ ct.TensorType("x", shape=x.shape) ]
+    from tetrai import coremltools_extensions as cte
+    mlmodel = cte.convert(traced_model, convert_to="neuralnetwork", inputs=cml_inputs)
+    mlmodel.save(model_path)
 
     # TODO: replace by helper routine
     # sample = _image_to_torch(input_shape)
@@ -145,30 +149,29 @@ for model_name in model_sizes_to_test:
     inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
     mlmodel = ct.models.MLModel(model_path) #, compute_units=ct.ComputeUnit.CPU_ONLY)
 
-    devices = [hub.Device(name="Apple iPhone 14 Pro")]
-    for each_device in devices:
-        """
-        Once we have fixes into hub, we can start using this
-        job = hub.submit_profile_job(
-            model=traced_model,
+    device = hub.Device(name="Apple iPhone 14 Pro")
+    """
+    Once we have fixes into hub, we can start using this
+    job = hub.submit_profile_job(
+        model=traced_model,
+        name=model_name,
+        input_shapes={ "x", input_shape  },
+        device=each,
+        options="--apple_zero_copy"
+    )
+
+    mlmodel = job.download_target_model()
+    """
+
+    validation_job = hub.submit_validation_job(
+            model=model_path,
             name=model_name,
-            input_shapes={ "x", input_shape },
-            device=each,
+            device=device,
+            inputs=inputs,
             options="--apple_zero_copy"
         )
 
-        mlmodel = job.download_target_model()
-        """
-
-        validation_job = hub.submit_validation_job(
-                model=model_path,
-                name=model_name,
-                device=each_device,
-                inputs=inputs,
-                options="--apple_zero_copy"
-            )
-
-        coreml_output = validation_job.download_output_data()
-        torch_output_order = list(coreml_output.keys()) if model.torch_output_order is None else model.torch_output_order
-        coreml_output_values = [coreml_output[key][0] for key in torch_output_order]
-        validate(torch_outputs, coreml_output_values, torch_output_order)
+    coreml_output = validation_job.download_output_data()
+    torch_output_order = list(coreml_output.keys()) if model.torch_output_order is None else model.torch_output_order
+    coreml_output_values = [coreml_output[key][0] for key in torch_output_order]
+    validate(torch_outputs, coreml_output_values, torch_output_order)
