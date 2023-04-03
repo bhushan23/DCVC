@@ -4,8 +4,8 @@ import coremltools as ct
 import torch
 import tetra_hub as hub
 
-from utils import *
-from model_wrapper import *
+from src.tetra.utils import *
+from src.tetra.model_wrapper import *
 
 """
 Structure:
@@ -54,7 +54,7 @@ if model.mode == "decoder":
     input_shape = [input_shape[0], 256, input_shape[2] // 16, input_shape[3] // 16]
 
 model_name = f"IntraNoAR_{model.mode}_{model_size_to_test}.mlmodel"
-model_path = os.path.join(current_dir, "tetra", "models", model_name)
+model_path = os.path.join(current_dir, "src", "tetra", "models", model_name)
 
 # TODO: replace by helper routine
 # sample = _image_to_torch(input_shape)
@@ -70,6 +70,7 @@ inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
 # device = hub.Device(name="Apple iPhone 14 Pro")
 # device = hub.Device(name="Apple iPhone 13")
 device = hub.Device(name='Apple iPhone 13 Pro Max', os='15.1')
+# device = hub.Device(name='Apple iPad Air (2022)', os='15.4.1')
 """
 TODO: Uncomment this on April 11th 2023 i.e. once clip, const-elimination fixes are released.
 
