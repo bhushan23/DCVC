@@ -50,8 +50,8 @@ input_shape = shape_map[model_size_to_test]
 if model.mode == "decoder":
     # TODO: check decoder input size observation with MS
     # Decoder shape is following
-    # [1, 256, inputH // 16, inputW // 16]
-    input_shape = [input_shape[0], 256, input_shape[2] // 16, input_shape[3] // 16]
+    # [1, 256, inputH // 64, inputW // 64]
+    input_shape = [input_shape[0], 256, input_shape[2] // 64, input_shape[3] // 64]
 
 model_name = f"IntraNoAR_{model.mode}_{model_size_to_test}.mlmodel"
 model_path = os.path.join(current_dir, "src", "tetra", "models", model_name)
@@ -67,22 +67,21 @@ torch_outputs = update_torch_outputs(torch_outputs)
 # CoreML inference: observed result.
 inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
 
-# device = hub.Device(name="Apple iPhone 14 Pro")
+device = hub.Device(name="Apple iPhone 14 Pro")
 # device = hub.Device(name="Apple iPhone 13")
-device = hub.Device(name='Apple iPhone 13 Pro Max', os='15.1')
+# device = hub.Device(name='Apple iPhone 13 Pro Max', os='15.1')
 # device = hub.Device(name='Apple iPad Air (2022)', os='15.4.1')
 """
-TODO: Uncomment this on April 11th 2023 i.e. once clip, const-elimination fixes are released.
+# TODO: Uncomment this on April 11th 2023 i.e. once clip, const-elimination fixes are released.
 
-x = torch.ones(input_shape)
-traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
+# x = torch.ones(input_shape)
+# traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
 
 job = hub.submit_profile_job(
-    model=mlmodel,
+    model=traced_model,
     name=model_name,
-    input_shapes={ "x", input_shape  },
+    # input_shapes={ "x", input_shape  },
     device=device,
-    options="--apple_zero_copy"
 )
 
 mlmodel = job.download_target_model()
@@ -92,7 +91,7 @@ validation_job = hub.submit_validation_job(
         name=model_name,
         device=device,
         inputs=inputs,
-        options="--apple_zero_copy"
+        # options="--compute_unit cpu"
     )
 
 coreml_output = validation_job.download_output_data()
