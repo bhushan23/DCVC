@@ -64,34 +64,30 @@ sample = torch.rand(input_shape)
 torch_outputs = model(sample)
 torch_outputs = update_torch_outputs(torch_outputs)
 
-# CoreML inference: observed result.
-inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
-
 device = hub.Device(name="Apple iPhone 14 Pro")
 # device = hub.Device(name="Apple iPhone 13")
 # device = hub.Device(name='Apple iPhone 13 Pro Max', os='15.1')
 # device = hub.Device(name='Apple iPad Air (2022)', os='15.4.1')
-"""
-# TODO: Uncomment this on April 11th 2023 i.e. once clip, const-elimination fixes are released.
 
-# x = torch.ones(input_shape)
-# traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
+x = torch.ones(input_shape)
+traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
 
 job = hub.submit_profile_job(
     model=traced_model,
     name=model_name,
-    # input_shapes={ "x", input_shape  },
+    input_shapes={ "x" : input_shape },
     device=device,
 )
 
 mlmodel = job.download_target_model()
-"""
+
+# CoreML inference: observed result.
+inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
 validation_job = hub.submit_validation_job(
-        model=model_path,
+        model=mlmodel,
         name=model_name,
         device=device,
         inputs=inputs,
-        # options="--compute_unit cpu"
     )
 
 coreml_output = validation_job.download_output_data()
