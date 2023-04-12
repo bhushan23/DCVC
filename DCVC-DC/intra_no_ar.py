@@ -17,7 +17,7 @@ Structure:
 current_dir = os.path.dirname(os.path.realpath(__file__))
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, default=os.path.join(current_dir, "checkpoints", "cvpr2023_image_psnr.pth.tar"))
-parser.add_argument("--model_type", type=str, default="encoder") # pass either "encoder" or "decoder"
+parser.add_argument("--model_type", type=str, default="forward") # pass "forward", "encoder" or "decoder"
 parser.add_argument("--model_size_to_test", type=str, default="360p") # pass input size to work with
 args = parser.parse_args()
 
@@ -31,6 +31,8 @@ if model_type == "encoder":
     model = IntraNoAR_encoder_wrapper(model_path)
 elif model_type == "decoder":
     model = IntraNoAR_decoder_wrapper(model_path)
+elif model_type == "forward":
+    model = IntraNoAR_wrapper(model_path)
 else:
     raise RuntimeError("Unsupported model_type '{model_type}' specified.")
 model.eval()
