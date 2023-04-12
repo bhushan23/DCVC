@@ -73,7 +73,6 @@ class IntraNoAR_decoder_wrapper(IntraNoAR_wrapper):
         #                                         self.model.y_spatial_prior_adaptor_3,
         #                                         self.model.y_spatial_prior)
         y_hat = self.model.dec(y_hat, curr_q_dec)
-        # TODO: UNet model i.e. refine leads to pytorch crash on 720p input
-        # y_hat = self.model.refine(y_hat)
-        # y_hat = y_hat.clamp_(0, 1)
+        y_hat = self.model.refine(y_hat)
+        y_hat = y_hat.clamp_(0, 1)
         return y_hat
