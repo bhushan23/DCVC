@@ -12,7 +12,7 @@ from .video_net import ME_Spynet, ResBlock, UNet, bilinearupsacling, bilineardow
     get_hyper_enc_dec_models, flow_warp
 from .layers import subpel_conv3x3, subpel_conv1x1, DepthConvBlock, \
     ResidualBlockWithStride, ResidualBlockUpsample
-from ..utils.stream_helper import get_downsampled_shape, encode_p, decode_p, filesize, \
+from ..utils.stream_helper import get_downsampled_shape, encode_p, decode_p, encode_p_complete, decode_p_complete, filesize, \
     get_state_dict
 
 
@@ -626,3 +626,53 @@ class DMC(CompressionModel):
                 "bit_mv_y": bit_mv_y,
                 "bit_mv_z": bit_mv_z,
                 }
+
+    def encode_only(self, x, dpb, q_in_ckpt, q_index, output_path=None,
+                      pic_width=None, pic_height=None, frame_idx=0):
+        # pic_width and pic_height may be different from x's size. x here is after padding
+        # x_hat has the same size with x
+        device = x.device
+        torch.cuda.synchronize(device=device)
+        t0 = time.time()
+        encoded = self.compress(x, dpb, q_in_ckpt, q_index, frame_idx)
+        encode_p_complete(pic_height, pic_width, encoded['bit_stream'], q_in_ckpt, q_index, frame_idx, output_path)
+        bits = filesize(output_path) * 8
+        torch.cuda.synchronize(device=device)
+        t1 = time.time()
+        pic_height, pic_width, q_in_ckpt, q_index, frame_idx, string = decode_p_complete(output_path)
+
+        decoded = self.decompress(dpb, string, pic_height, pic_width,
+                                    q_in_ckpt, q_index, frame_idx)
+        torch.cuda.synchronize(device=device)
+        t2 = time.time()
+        result = {
+            "dpb": decoded["dpb"],
+            "bit": bits,
+            "encoding_time": t1 - t0,
+            "decoding_time": t2 - t1,
+        }
+        return result
+
+    def decode_only(self, device, dpb, output_path=None):
+        # pic_width and pic_height may be different from x's size. x here is after padding
+        # x_hat has the same size with x
+        torch.cuda.synchronize(device=device)
+        t0 = time.time()
+        torch.cuda.synchronize(device=device)
+        t1 = time.time()
+        pic_height, pic_width, q_in_ckpt, q_index, frame_idx, string = decode_p_complete(output_path)
+        bits = filesize(output_path) * 8
+
+        decoded = self.decompress(dpb, string, pic_height, pic_width,
+                                    q_in_ckpt, q_index, frame_idx)
+        torch.cuda.synchronize(device=device)
+        t2 = time.time()
+        result = {
+            "dpb": decoded["dpb"],
+            "bit": bits, 
+            "pic_height": pic_height, 
+            "pic_width": pic_width,
+            "encoding_time": t1 - t0,
+            "decoding_time": t2 - t1,
+        }
+        return result

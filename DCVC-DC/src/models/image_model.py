@@ -195,6 +195,43 @@ class IntraNoAR(CompressionModel):
         }
         return result
 
+    def encode_only(self, x, q_in_ckpt, q_index,
+                      output_path=None, pic_width=None, pic_height=None):
+        # pic_width and pic_height may be different from x's size. X here is after padding
+        # x_hat has the same size with x
+        assert pic_height is not None
+        assert pic_width is not None
+        compressed = self.compress(x, q_in_ckpt, q_index)
+        bit_stream = compressed['bit_stream']
+        encode_i(pic_height, pic_width, q_in_ckpt, q_index, bit_stream, output_path)
+        bit = filesize(output_path) * 8
+
+        height, width, q_in_ckpt, q_index, bit_stream = decode_i(output_path)
+        decompressed = self.decompress(bit_stream, height, width, q_in_ckpt, q_index)
+        x_hat = decompressed['x_hat']
+
+        result = {
+            'bit': bit,
+            'x_hat': x_hat,
+        }
+        return result
+
+    def decode_only(self, output_path):
+        # pic_width and pic_height may be different from x's size. X here is after padding
+        # x_hat has the same size with x
+        height, width, q_in_ckpt, q_index, bit_stream = decode_i(output_path)
+        bit = filesize(output_path) * 8
+        decompressed = self.decompress(bit_stream, height, width, q_in_ckpt, q_index)
+        x_hat = decompressed['x_hat']
+
+        result = {
+            'bit': bit,
+            'x_hat': x_hat,
+            'pic_height': height, 
+            'pic_width': width
+        }
+        return result
+        
     def compress(self, x, q_in_ckpt, q_index):
         curr_q_enc, curr_q_dec = self.get_q_for_inference(q_in_ckpt, q_index)
 
