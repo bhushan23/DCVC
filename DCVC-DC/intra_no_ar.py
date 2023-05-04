@@ -148,7 +148,7 @@ for i in range(len(input_frames) // NUM_OF_FRAMES_PER_VALIDATION_JOB + 1):
     torch_outputs = []
     for sample in sample_frames:
         torch_output = model(torch.Tensor(sample))
-        torch_outputs.append(update_torch_outputs(torch_output))
+        torch_outputs += update_torch_outputs(torch_output)
 
     print('Performing PSNR check')
     frame_names = [ f'frame_{i}' for i in range(len(sample_frames))]
