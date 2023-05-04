@@ -15,14 +15,14 @@ class IntraNoAR_wrapper(nn.Module):
         assert mode in { "forward", "encoder", "decoder"}
         self.mode = mode
         self.torch_output_order = None
-        if mode == "forward":
-            # Forward has multiple outputs and for numerical accuracy test we need to maintain order.
-            # NOTE: variable names will change if mlmodel is updated.
-            self.torch_output_order = ["var_2314", "var_2452", "var_2453", "bpp_y", "bpp_z"]
+        # if mode == "forward":
+        #     # Forward has multiple outputs and for numerical accuracy test we need to maintain order.
+        #     # NOTE: variable names will change if mlmodel is updated.
+        #     self.torch_output_order = ["var_2314", "var_2452", "var_2453", "bpp_y", "bpp_z"]
 
     def forward(self, x, q_in_ckpt=False, q_index=0):
-        out_dict = self.model(x)
-        return out_dict["x_hat"], out_dict["bit"], out_dict["bpp"], out_dict["bpp_y"], out_dict["bpp_z"]
+        out_dict = self.model(x, q_in_ckpt=q_in_ckpt, q_index=q_index)
+        return out_dict["x_hat"] #, out_dict["bit"], out_dict["bpp"], out_dict["bpp_y"], out_dict["bpp_z"]
 
 
 # TODO: IntraNoAR encoder

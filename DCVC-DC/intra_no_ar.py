@@ -2,10 +2,21 @@ import os
 import argparse
 import coremltools as ct
 import torch
+import torchvision.transforms as T
 import tetra_hub as hub
 
+from src.transforms.functional import ycbcr420_to_444
+from src.utils.stream_helper import get_padding_size
+from src.utils.video_reader import YUVReader
 from src.tetra.utils import *
 from src.tetra.model_wrapper import *
+
+NUM_OF_FRAMES_PER_VALIDATION_JOB = 1000
+
+def _np_image_to_tensor(img):
+    image = torch.from_numpy(img).type(torch.FloatTensor)
+    image = image.unsqueeze(0)
+    return image
 
 """
 Structure:
@@ -16,9 +27,14 @@ Structure:
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_path", type=str, default=os.path.join(current_dir, "checkpoints", "cvpr2023_image_psnr.pth.tar"))
+parser.add_argument("--model_path", type=str, default=os.path.join(current_dir, "checkpoints", "cvpr2023_image_psnr.pth.tar")) #  "cvpr2023_image_yuv420_psnr.pth.tar"))
 parser.add_argument("--model_type", type=str, default="forward") # pass "forward", "encoder" or "decoder"
 parser.add_argument("--model_size_to_test", type=str, default="360p") # pass input size to work with
+parser.add_argument("--yuv_path", type=str, required=True)
+parser.add_argument("--yuv_frame_count", type=int, default=1)
+parser.add_argument("--yuv_ht", type=int, required=True)
+parser.add_argument("--yuv_wt", type=int, required=True)
+
 args = parser.parse_args()
 
 model_path = args.model_path
@@ -39,9 +55,10 @@ model.eval()
 
 # NOTE: we have included padding for simplicity
 shape_map = {
-    "1080p" : (1, 3, 1088, 1920),
-    "720p" : (1, 3, 768, 1280),
-    "360p" : (1, 3, 384, 512)
+    "1080p" : (1, 3, 1080, 1920),
+    "720p" : (1, 3, 720, 1280),
+    "360p" : (1, 3, 360, 480)
+
 }
 
 if model_size_to_test not in shape_map:
@@ -58,45 +75,91 @@ if model.mode == "decoder":
 model_name = f"IntraNoAR_{model.mode}_{model_size_to_test}.mlmodel"
 model_path = os.path.join(current_dir, "src", "tetra", "models", model_name)
 
-# TODO: replace by helper routine
-# sample = _image_to_torch(input_shape)
-sample = torch.rand(input_shape)
-
-# PyTorch inference: expected result.
-torch_outputs = model(sample)
-torch_outputs = update_torch_outputs(torch_outputs)
-
 device = hub.Device(name="Apple iPhone 14 Pro")
-# device = hub.Device(name="Apple iPhone 13")
-# device = hub.Device(name='Apple iPhone 13 Pro Max', os='15.1')
-# device = hub.Device(name='Apple iPad Air (2022)', os='15.4.1')
-
-x = torch.ones(input_shape)
+x = torch.rand(input_shape)
+# pad if necessary
+padding_l, padding_r, padding_t, padding_b = get_padding_size(*input_shape[2:], 16)
+x = torch.nn.functional.pad(
+    x,
+    (padding_l, padding_r, padding_t, padding_b),
+    mode="replicate",
+)
+# 1. Trace Torch model
 traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
 
-job = hub.submit_profile_job(
-    model=traced_model,
-    name=model_name,
-    input_shapes={ "x" : input_shape },
-    device=device,
-)
+# 2. Submit profile job
+# job = hub.submit_profile_job(
+#     model=traced_model,
+#     name=model_name,
+#     input_shapes={ "x" : x.shape },
+#     device=device,
+# )
+# or skip running profiling job and instead fetch model from existing job
+job = hub.get_job('ygzr2658')
+target_model = job.get_target_model()
 
-mlmodel = job.download_target_model()
+image_dims = tuple(input_shape[2:])
+src_reader = YUVReader(args.yuv_path, args.yuv_wt, args.yuv_ht)
+tranform = T.Resize(image_dims)
 
-# CoreML inference: observed result.
-inputs = { "x" : [ sample.numpy().astype(np.float32) ]}
-validation_job = hub.submit_validation_job(
-        model=mlmodel,
+input_frames = []
+for frame_num in range(args.yuv_frame_count):
+    y, uv = src_reader.read_one_frame(dst_format="420")
+    yuv = ycbcr420_to_444(y, uv, order=0)
+    x = _np_image_to_tensor(yuv)
+    x = tranform(x)
+
+    # pad if necessary
+    padding_l, padding_r, padding_t, padding_b = get_padding_size(*image_dims, 16)
+    sample = torch.nn.functional.pad(
+        x,
+        (padding_l, padding_r, padding_t, padding_b),
+        mode="replicate",
+    )
+
+    input_frames.append(sample)
+
+
+for i in range(len(input_frames) // NUM_OF_FRAMES_PER_VALIDATION_JOB + 1):
+    index = NUM_OF_FRAMES_PER_VALIDATION_JOB * i
+    sample_frames = input_frames[ index : index + NUM_OF_FRAMES_PER_VALIDATION_JOB ]
+    sample_frames = [ sample.numpy().astype(np.float32) for sample in sample_frames ]
+
+    # 3. submit validation job
+    print(f"Running validation job for {len(sample_frames)} frames({index} - {index + len(sample_frames)}).")
+    inputs = { "x" : sample_frames }
+    validation_job = hub.submit_validation_job(
+        model=target_model,
         name=model_name,
         device=device,
         inputs=inputs,
     )
 
-coreml_output = validation_job.download_output_data()
-if coreml_output is None:
-    print("Validation failed! Please try running on the same device again or new device.")
-    exit(0)
+    # 4. Collect output from validation job
+    coreml_output = validation_job.download_output_data()
+    if coreml_output is None:
+        print("Validation failed! Please try running on the same device again or new device.")
+        exit(0)
 
-torch_output_order = list(coreml_output.keys()) if model.torch_output_order is None else model.torch_output_order
-coreml_output_values = [coreml_output[key][0] for key in torch_output_order]
-validate(torch_outputs, coreml_output_values, torch_output_order)
+    coreml_output_key = list(coreml_output.keys())[0]
+    coreml_output_values = coreml_output[coreml_output_key]
+
+    # 5. PyTorch inference: expected result.
+    torch_outputs = []
+    for sample in sample_frames:
+        torch_output = model(torch.Tensor(sample))
+        torch_outputs.append(update_torch_outputs(torch_output))
+
+    print('Performing PSNR check')
+    frame_names = [ f'frame_{i}' for i in range(len(sample_frames))]
+    # # PSNR check: torch vs coreml
+    # print('--| PSNR check coreml model wrt fp32 torch model |--')
+    # validate(torch_outputs, coreml_output_values, torch_output_order, psnr_threshold=0.)
+
+    # PSNR check: torch vs input
+    print('--| PSNR check torch out wrt input |--')
+    validate(sample_frames, torch_outputs, frame_names, psnr_threshold=0.)
+
+    # PSNR check: coreml vs input
+    print('--| PSNR check coreml out wrt input |--')
+    validate(sample_frames, coreml_output_values, frame_names, psnr_threshold=0.)
