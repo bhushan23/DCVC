@@ -15,7 +15,6 @@ from .layers import subpel_conv3x3, subpel_conv1x1, DepthConvBlock, \
 from ..utils.stream_helper import get_downsampled_shape, encode_p, decode_p, filesize, \
     get_state_dict
 
-
 g_ch_1x = 48
 g_ch_2x = 64
 g_ch_4x = 96

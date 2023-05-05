@@ -29,7 +29,7 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_path", type=str, default=os.path.join(current_dir, "checkpoints", "cvpr2023_image_psnr.pth.tar")) #  "cvpr2023_image_yuv420_psnr.pth.tar"))
 parser.add_argument("--model_type", type=str, default="forward") # pass "forward", "encoder" or "decoder"
-parser.add_argument("--model_size_to_test", type=str, default="360p") # pass input size to work with
+parser.add_argument("--model_size", type=str, default="360p") # pass input size to work with
 parser.add_argument("--yuv_path", type=str, required=True)
 parser.add_argument("--yuv_frame_count", type=int, default=1)
 parser.add_argument("--yuv_ht", type=int, required=True)
@@ -39,15 +39,15 @@ args = parser.parse_args()
 
 model_path = args.model_path
 model_type = args.model_type
-model_size_to_test = args.model_size_to_test
+model_size_to_test = args.model_size
 
 # initialize wrapper model
 # model = IntraNoAR_wrapper(model_path, mode=mode)
-if model_type == "encoder":
-    model = IntraNoAR_encoder_wrapper(model_path)
-elif model_type == "decoder":
-    model = IntraNoAR_decoder_wrapper(model_path)
-elif model_type == "forward":
+# if model_type == "encoder":
+#     model = IntraNoAR_encoder_wrapper(model_path)
+# elif model_type == "decoder":
+#     model = IntraNoAR_decoder_wrapper(model_path)
+if model_type == "forward":
     model = IntraNoAR_wrapper(model_path)
 else:
     raise RuntimeError("Unsupported model_type '{model_type}' specified.")
@@ -88,14 +88,14 @@ x = torch.nn.functional.pad(
 traced_model = torch.jit.trace(model, x, check_trace=False, strict=False)
 
 # 2. Submit profile job
-# job = hub.submit_profile_job(
-#     model=traced_model,
-#     name=model_name,
-#     input_shapes={ "x" : x.shape },
-#     device=device,
-# )
+job = hub.submit_profile_job(
+    model=traced_model,
+    name=model_name,
+    input_shapes={ "x" : x.shape },
+    device=device,
+)
 # or skip running profiling job and instead fetch model from existing job
-job = hub.get_job('ygzr2658')
+# job = hub.get_job("w56ne7go")
 target_model = job.get_target_model()
 
 image_dims = tuple(input_shape[2:])
@@ -134,6 +134,7 @@ for i in range(len(input_frames) // NUM_OF_FRAMES_PER_VALIDATION_JOB + 1):
         device=device,
         inputs=inputs,
     )
+    # validation_job = hub.get_job("1p3evz52")
 
     # 4. Collect output from validation job
     coreml_output = validation_job.download_output_data()
@@ -141,14 +142,18 @@ for i in range(len(input_frames) // NUM_OF_FRAMES_PER_VALIDATION_JOB + 1):
         print("Validation failed! Please try running on the same device again or new device.")
         exit(0)
 
-    coreml_output_key = list(coreml_output.keys())[0]
-    coreml_output_values = coreml_output[coreml_output_key]
+    # NOTE: query coreml_output to see other results
+    # model.torch_output_order can be used to get the order output of of coreml model
+    # same as src/tetra/model_wrapper/<model>
+    torch_output_order = model.torch_output_order
+    # x_hat
+    coreml_output_values = coreml_output[torch_output_order[0]]
 
     # 5. PyTorch inference: expected result.
     torch_outputs = []
     for sample in sample_frames:
         torch_output = model(torch.Tensor(sample))
-        torch_outputs += update_torch_outputs(torch_output)
+        torch_outputs += update_torch_outputs(torch_output[0])
 
     print('Performing PSNR check')
     frame_names = [ f'frame_{i}' for i in range(len(sample_frames))]
