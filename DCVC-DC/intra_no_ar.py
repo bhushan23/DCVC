@@ -48,7 +48,7 @@ model_size_to_test = args.model_size
 # elif model_type == "decoder":
 #     model = IntraNoAR_decoder_wrapper(model_path)
 if model_type == "forward":
-    model = IntraNoAR_wrapper(model_path)
+    model = IntraNoAR_wrapper(model_path, q_in_ckpt=True, q_index=3)
 else:
     raise RuntimeError("Unsupported model_type '{model_type}' specified.")
 model.eval()

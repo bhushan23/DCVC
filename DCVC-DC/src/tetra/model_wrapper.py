@@ -6,7 +6,7 @@ import torch.nn as nn
 ## IntraNoAr wrapper
 
 class IntraNoAR_wrapper(nn.Module):
-    def __init__(self, model_path, mode="forward"):
+    def __init__(self, model_path, mode="forward", q_in_ckpt=False, q_index=0):
         super().__init__()
         self.model = IntraNoAR()
         state_dict = get_state_dict(model_path)
@@ -15,13 +15,15 @@ class IntraNoAR_wrapper(nn.Module):
         assert mode in { "forward", "encoder", "decoder"}
         self.mode = mode
         self.torch_output_order = None
+        self.q_in_ckpt = q_in_ckpt
+        self.q_index = q_index
         if mode == "forward":
             # Forward has multiple outputs and for numerical accuracy test we need to maintain order.
             # NOTE: variable names will change if mlmodel is updated.
-            self.torch_output_order = ["var_2314", "var_2452", "var_2453", "bpp_y_1", "bpp_z_1"]
+            self.torch_output_order = ["var_2325", "var_2463", "var_2464", "bpp_y_1", "bpp_z_1"]
 
-    def forward(self, x, q_in_ckpt=False, q_index=0):
-        out_dict = self.model(x, q_in_ckpt=q_in_ckpt, q_index=q_index)
+    def forward(self, x):
+        out_dict = self.model(x, q_in_ckpt=self.q_in_ckpt, q_index=self.q_index)
         return out_dict["x_hat"], out_dict["bit"], out_dict["bpp"], out_dict["bpp_y"], out_dict["bpp_z"]
 
 
