@@ -21,7 +21,9 @@ def convert_with_extesions(traced_model, model_name, output_dir, input_shapes, c
     ct_inputs = [ ct.TensorType(shape=shape) for shape in input_shapes ]
     model = cte_convert(traced_model, inputs=ct_inputs, os_version=os_version)
     output_path = os.path.join(output_dir, model_name)
-    model.save(f"{output_path}.mlpackage")
+    model_output_path = f"{output_path}.mlpackage"
+    model.save(model_output_path)
+    print(f"Converted model saved to {model_output_path}.")
 
 
 # Example usage:
@@ -74,12 +76,10 @@ dmc_c3 = (1, 96, 92, 120)
 
 x = torch.rand(encoder_input)
 traced_model = torch.jit.trace(intra_no_ar_encoder, (x, sample_q_index, dummy_input), check_trace=False)
-#submit_job(traced_model, "IntraNoAR_Encoder", {"x" : x.shape, "q_index": sample_q_index.shape, "dummy_input": dummy_input.shape})
 convert_with_extesions(traced_model=traced_model, model_name="IntraNoAR_encoder", output_dir=asset_dir, input_shapes=[x.shape, sample_q_index.shape, dummy_input.shape])
 
 y_hat = torch.rand(intra_no_ar_y_hat)
 traced_model = torch.jit.trace(intra_no_ar_decoder, (y_hat, sample_q_index, dummy_input), check_trace=False)
-#submit_job(traced_model, "IntraNoAR_Decoder", {"x" : y_hat.shape, "q_index": sample_q_index.shape, "dummy_input": dummy_input.shape})
 convert_with_extesions(traced_model=traced_model, model_name="IntraNoAR_decoder", output_dir=asset_dir, input_shapes=[y_hat.shape, sample_q_index.shape, dummy_input.shape])
 
 #
